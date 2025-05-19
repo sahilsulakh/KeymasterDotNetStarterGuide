@@ -1,0 +1,133 @@
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using App1;
+
+namespace YourWorkspaceName
+{
+    // This class is responsible for authenticating a license key by calling
+    // your KeyMaster backend API and getting a response about whether the key is valid.
+    public class AuthService
+    {
+        private const string ApiBaseUrl = "https://keymaster-agni.vercel.app/api/authenticate-key"; //DON'T CHANGE THIS URL
+       
+        // HttpClient is used to send HTTP requests (like GET, POST) to web servers.
+        // We create one static client to reuse it for better performance.
+        private static readonly HttpClient client = new();
+
+        // These options tell the JSON serializer to ignore case differences when reading JSON.
+        // For example, it treats "success" and "Success" as the same property.
+        private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+        // Constructor for AuthService class
+        public AuthService()
+        {
+            // Clear any existing headers for the client
+            client.DefaultRequestHeaders.Accept.Clear();
+
+            // We want to tell the server that we accept responses in JSON format
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/json"));
+
+            // This header 'X-Api-Key' is a secret key that you create to identify your app.
+            // Your backend API checks this key to make sure the request comes from your app.
+            // This is NOT the same as any other keys.
+            // Replace "YOUR-CUSTOM-X-API-KEY" with your actual secret key.
+            client.DefaultRequestHeaders.Add("X-Api-Key", "YOUR-CUSTOM-X-API-KEY");
+        }
+
+        // This is the main method to call your backend API and authenticate the license key.
+        // It is async because it involves waiting for the server to respond.
+        // Takes an AuthRequest object and returns an AuthResponse object asynchronously.
+        public static async Task<AuthResponse> AuthenticateAsync(AuthRequest request)
+        {
+            try
+            {
+                // Convert the AuthRequest object into JSON string to send to server
+                string jsonRequest = JsonSerializer.Serialize(request);
+
+                // Create HTTP content with the JSON data, specify encoding and content type (application/json)
+                var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
+
+                // Send a POST request to the API URL with the JSON content
+                HttpResponseMessage response = await client.PostAsync(ApiBaseUrl, content);
+
+                // Read the response body from the server as a string
+                string responseBody = await response.Content.ReadAsStringAsync();
+
+                // Check if the HTTP response status is 2xx (Success)
+                if (response.IsSuccessStatusCode)
+                {
+                    // If success, try to convert the JSON response into an AuthResponse object
+                    var result = JsonSerializer.Deserialize<AuthResponse>(responseBody, JsonOptions);
+
+                    // Return the result if deserialization succeeded
+                    // Otherwise, return a failure response with a message about deserialization failure
+                    return result ?? new AuthResponse
+                    {
+                        Success = false,
+                        Message = "Failed to deserialize response",
+                        ErrorCode = "DESERIALIZATION_ERROR"
+                    };
+                }
+                else
+                {
+                    // If response is not success (like 400, 401, 403, 500 etc), try to parse
+                    // the error response JSON into AuthResponse, if the server sent structured error details
+                    try
+                    {
+                        var errorResponse = JsonSerializer.Deserialize<AuthResponse>(responseBody, JsonOptions);
+
+                        // If parsing succeeds and the error message is available, return that error response
+                        if (errorResponse != null && !string.IsNullOrWhiteSpace(errorResponse.Message))
+                        {
+                            return errorResponse;
+                        }
+                    }
+                    catch
+                    {
+                        // If parsing fails, we ignore the exception and continue to return a generic error below
+                    }
+
+                    // If no structured error, return a generic error message with status code and reason
+                    return new AuthResponse
+                    {
+                        Success = false,
+                        Message = $"Error: {(int)response.StatusCode} - {response.ReasonPhrase}. Details: {responseBody}",
+                        ErrorCode = response.StatusCode.ToString() // e.g., "NotFound", "Forbidden"
+                    };
+                }
+            }
+            catch (HttpRequestException e) // This catches network errors (e.g., server unreachable)
+            {
+                return new AuthResponse
+                {
+                    Success = false,
+                    Message = "Network error: Could not connect to the server. " + e.Message,
+                    ErrorCode = "NETWORK_ERROR"
+                };
+            }
+            catch (JsonException e) // This catches errors when parsing JSON responses fails
+            {
+                return new AuthResponse
+                {
+                    Success = false,
+                    Message = "Error processing server response: " + e.Message,
+                    ErrorCode = "JSON_PARSE_ERROR"
+                };
+            }
+            catch (Exception e) // This catches any other unexpected errors
+            {
+                return new AuthResponse
+                {
+                    Success = false,
+                    Message = "An unexpected error occurred: " + e.Message,
+                    ErrorCode = "UNEXPECTED_ERROR"
+                };
+            }
+        }
+    }
+}

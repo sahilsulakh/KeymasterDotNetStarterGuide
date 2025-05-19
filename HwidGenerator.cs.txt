@@ -1,0 +1,83 @@
+using System;
+using System.IO;
+
+namespace YourWorkspaceName
+{
+    // ============================================
+    // Class: HwidGenerator
+    // ============================================
+    // This static class is responsible for generating and managing a persistent
+    // hardware identifier (HWID) for your application. The HWID is stored locally
+    // in a file and reused across sessions unless deleted manually.
+    public static class HwidGenerator
+    {
+        // Cached HWID for the current session (in memory)
+        private static string? _hwid;
+
+        // ============================
+        // IMPORTANT: CHANGE THIS
+        // ============================
+        // Replace "YourActualAppName" with your real application folder name.
+        // This path will look like: 
+        // C:\Users\<User>\AppData\Roaming\YourActualAppName\hwid.dat
+        private static readonly string HwidFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "YourActualAppName", // TODO: Change this to your app name
+            "hwid.dat"
+        );
+
+        // ============================================
+        // Method: GetHardwareId
+        // ============================================
+        // Returns the stored HWID or generates a new one if not found.
+        public static string GetHardwareId()
+        {
+            // Return cached value if it already exists for this session
+            if (!string.IsNullOrEmpty(_hwid))
+                return _hwid;
+
+            try
+            {
+                // Ensure the directory exists (create if it doesn't)
+                string? dirPath = Path.GetDirectoryName(HwidFilePath);
+                if (!string.IsNullOrEmpty(dirPath))
+                {
+                    Directory.CreateDirectory(dirPath);
+                }
+
+                // Attempt to read HWID from file
+                if (File.Exists(HwidFilePath))
+                {
+                    _hwid = File.ReadAllText(HwidFilePath).Trim();
+                    if (!string.IsNullOrWhiteSpace(_hwid))
+                    {
+                        return _hwid; // Use existing HWID
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log or handle file read errors (e.g., access denied)
+                Console.WriteLine($"[HWID] Failed to read HWID file: {ex.Message}");
+                // Continue to generate a new one
+            }
+
+            // Generate a new HWID using a GUID (can be replaced with more advanced logic)
+            _hwid = Guid.NewGuid().ToString().ToUpper();
+
+            try
+            {
+                // Save the new HWID to file for persistence
+                File.WriteAllText(HwidFilePath, _hwid);
+            }
+            catch (Exception ex)
+            {
+                // Log or handle write errors (e.g., disk full, permissions)
+                Console.WriteLine($"[HWID] Failed to save HWID file: {ex.Message}");
+                // HWID still works in memory for this session
+            }
+
+            return _hwid;
+        }
+    }
+}

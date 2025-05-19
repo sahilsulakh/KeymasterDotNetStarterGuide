@@ -1,0 +1,52 @@
+using System;
+
+namespace YourWorkspaceName
+{
+    // ===========================
+    // Model: AuthRequest
+    // ===========================
+    // This class defines the data structure that your .NET app will send TO your KeyMaster backend API
+    // during the authentication process.
+    public class AuthRequest
+    {
+        // The license key entered by the user.
+        public string LicenseKey { get; set; } = string.Empty;
+
+        // Hardware ID (HWID) to link or validate against the license key.
+        public string Hwid { get; set; } = string.Empty;
+
+        // The current version of your .NET application.
+        // Useful for enforcing version-specific access or updates.
+        public string AppVersion { get; set; } = string.Empty;
+
+        // (Optional) Username associated with the license key.
+        // Useful if your backend supports login via username/password.
+        public string? Username { get; set; }
+
+        // (Optional) Password associated with the license key.
+        public string? Password { get; set; }
+    }
+
+    // ===========================
+    // Model: AuthResponse
+    // ===========================
+    // This class defines the data structure that your .NET app will RECEIVE
+    // FROM your KeyMaster backend API after attempting authentication.
+    public class AuthResponse
+    {
+        // Indicates whether the authentication was successful.
+        public bool Success { get; set; }
+
+        // A human-readable message returned from the server.
+        // Example: "Welcome back!", "Key is invalid", etc.
+        public string Message { get; set; } = string.Empty;
+
+        // A structured error code to allow the app to respond programmatically.
+        // Examples: "KEY_INVALID", "HWID_MISMATCH", "KEY_EXPIRED", "UNAUTHORIZED"
+        public string ErrorCode { get; set; } = string.Empty;
+
+        // Current status of the license or user.
+        // Examples: "active", "paused", "revoked", "expired"
+        public string UserStatus { get; set; } = string.Empty;
+    }
+}

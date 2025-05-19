@@ -1,0 +1,77 @@
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+
+namespace YourWorkspaceName
+{
+    public partial class LoginPage : Form
+    {
+        // Declare AuthService object (manages communication with your backend)
+        private AuthService _authService;
+
+        public Form1()
+        {
+            InitializeComponent();
+            _authService = new AuthService();
+        }
+
+        private void LoginPage_Load(object sender, EventArgs e)
+        {
+            // Optional: Initialization tasks on form load
+            // Example: lblStatus.Text = "Enter your license key.";
+        }
+
+        // ============================
+        // Authenticate Button Click
+        // ============================
+        private async void btnActivate_Click(object sender, EventArgs e)
+        {
+            btnActivate.Enabled = false; // Disable the button to prevent double-clicks
+            if (lblStatus != null) lblStatus.Text = "Authenticating, please wait...";
+
+            // ============================
+            // STEP 1: Prepare the request
+            // ============================
+            var authRequest = new AuthRequest
+            {
+                LicenseKey = txtLicenseKey.Text.Trim().ToUpper(),
+                Hwid = HwidGenerator.GetHardwareId(),
+                AppVersion = Application.ProductVersion,
+
+                // Optional fields — only use if enabled in KeyMaster and your backend:
+                // Username = txtUsername.Text.Trim(),
+                // Password = txtPassword.Text
+            };
+
+            // ============================
+            // STEP 2: Authenticate with backend
+            // ============================
+            AuthResponse authResult = await AuthService.AuthenticateAsync(authRequest);
+
+            // ============================
+            // STEP 3: Handle the response
+            // ============================
+            if (authResult.Success)
+            {
+                // ✅ SUCCESS: License key is valid
+                MessageBox.Show(authResult.Message, "Authentication Successful", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                // TODO: Unlock features or proceed to main form
+                // Example:
+                // this.Hide();
+                // var mainApp = new MainForm(); // Your actual form name
+                // mainApp.ShowDialog();
+                // this.Close();
+            }
+            else
+            {
+                // ❌ FAILURE: Invalid key, HWID mismatch, expired, etc.
+                MessageBox.Show(authResult.Message, "Authentication Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (lblStatus != null)
+                    lblStatus.Text = $"Failed: {authResult.Message}";
+            }
+
+            btnActivate.Enabled = true; // Re-enable button after completion
+        }
+    }
+}
