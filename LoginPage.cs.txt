@@ -1,77 +1,104 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace YourWorkspaceName
+namespace YourWorkSpaceName  //Change it to your workspace name
 {
     public partial class LoginPage : Form
     {
-        // Declare AuthService object (manages communication with your backend)
-        private AuthService _authService;
+        // Service for communicating with KeyMaster authentication backend
+        private KeyMasterAuthService _authService;
+
+        // Your KeyMaster account's unique identifier (UID)
+        private string _myKeyMasterAccountUID = "PASTE_YOUR_KEYMASTER_ACCOUNT_UID_HERE"; //CHANGE IT WITH YOUR ACCOOUNT USER ID FROM KEYMASTER PROFILE SECTION
 
         public Form1()
         {
             InitializeComponent();
-            _authService = new AuthService();
+
+            // Initialize the authentication service
+            _authService = new KeyMasterAuthService();
+
+            // Validate if KeyMaster UID is configured properly
+            if (string.IsNullOrWhiteSpace(_myKeyMasterAccountUID) ||
+                _myKeyMasterAccountUID == "PASTE_YOUR_KEYMASTER_ACCOUNT_UID_HERE") //DONT TOUCH/PASTE ANYTHING HERE ⚠️⚠️
+            {
+                MessageBox.Show(
+                    "KeyMaster Account UID is not set in the application. Please contact the application provider.",
+                    "Configuration Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
+
+                // Optional: Disable login button if UID is not set
+                // btnLogin.Enabled = false;
+            }
         }
 
-        private void LoginPage_Load(object sender, EventArgs e)
+        private void Form1_Load(object sender, EventArgs e)
         {
-            // Optional: Initialization tasks on form load
-            // Example: lblStatus.Text = "Enter your license key.";
+            // Reserved for form load logic (if needed)
         }
 
-        // ============================
-        // Authenticate Button Click
-        // ============================
+        // Event handler for the "Activate" button click
         private async void btnActivate_Click(object sender, EventArgs e)
         {
-            btnActivate.Enabled = false; // Disable the button to prevent double-clicks
-            if (lblStatus != null) lblStatus.Text = "Authenticating, please wait...";
+        // Prevent activation if KeyMaster UID is not set
+        if (string.IsNullOrWhiteSpace(_myKeyMasterAccountUID) || _myKeyMasterAccountUID == "PASTE_YOUR_KEYMASTER_ACCOUNT_UID_HERE") //DONT TOUCH/PASTE ANYTHING HERE⚠️⚠️
+            {
+                MessageBox.Show("Application is not configured to connect to KeyMaster. Please contact the application provider.", "Configuration Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
 
-            // ============================
-            // STEP 1: Prepare the request
-            // ============================
+            // Disable the button to prevent multiple clicks
+            btnActivate.Enabled = false;
+
+            // Optional: Update UI label to show authentication progress
+            if (lblStatus != null) lblStatus.Text = "Authenticating...";
+
+            // Prepare the authentication request payload
             var authRequest = new AuthRequest
             {
-                LicenseKey = txtLicenseKey.Text.Trim().ToUpper(),
-                Hwid = HwidGenerator.GetHardwareId(),
-                AppVersion = Application.ProductVersion,
-
-                // Optional fields — only use if enabled in KeyMaster and your backend:
-                // Username = txtUsername.Text.Trim(),
-                // Password = txtPassword.Text
+                MasterUserId = _myKeyMasterAccountUID, // Your account UID
+                LicenseKey = txtLicenseKey.Text.Trim().ToUpper(), // User-entered license key
+                Hwid = HwidGenerator.GetHardwareId(), // Hardware ID of the user's system
+                AppVersion = Application.ProductVersion, // Current application version
+                Username = string.IsNullOrWhiteSpace(txtUsername.Text) ? null : txtUsername.Text.Trim(),
+                // Password = string.IsNullOrWhiteSpace(txtPassword.Text) ? null : txtPassword.Text // Uncomment if password is used
             };
 
-            // ============================
-            // STEP 2: Authenticate with backend
-            // ============================
-            AuthResponse authResult = await AuthService.AuthenticateAsync(authRequest);
+            // Debugging output (visible in Output window during development)
+            Debug.WriteLine($"Attempting KeyMaster Auth with MasterUserId: '{authRequest.MasterUserId}'");
+            Debug.WriteLine($"LicenseKey: '{authRequest.LicenseKey}', HWID: '{authRequest.Hwid}', AppVersion: '{authRequest.AppVersion}'");
 
-            // ============================
-            // STEP 3: Handle the response
-            // ============================
-            if (authResult.Success)
+            // Send the authentication request and await the result
+            AuthResponse? authResult = await _authService.AuthenticateAsync(authRequest);
+
+            // Check if authentication was successful
+            if (authResult != null && authResult.Success)
             {
-                // ✅ SUCCESS: License key is valid
                 MessageBox.Show(authResult.Message, "Authentication Successful", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-                // TODO: Unlock features or proceed to main form
+                // TODO: Unlock your application's main features after successful login
                 // Example:
-                // this.Hide();
-                // var mainApp = new MainForm(); // Your actual form name
-                // mainApp.ShowDialog();
-                // this.Close();
+                 // this.Hide();
+                 // MainForm mainApp = new MainForm();
+                 // mainApp.ShowDialog();
+                 // this.Close();
             }
             else
             {
-                // ❌ FAILURE: Invalid key, HWID mismatch, expired, etc.
-                MessageBox.Show(authResult.Message, "Authentication Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                if (lblStatus != null)
-                    lblStatus.Text = $"Failed: {authResult.Message}";
+                // If authentication failed, show the error message
+                string errorMessage = authResult?.Message ?? "An unknown authentication error occurred.";
+                MessageBox.Show(errorMessage, "Authentication Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+                // Optional: Update status label with error
+                // if (lblStatus != null) lblStatus.Text = $"Failed: {errorMessage}";
             }
 
-            btnActivate.Enabled = true; // Re-enable button after completion
+            // Re-enable the button after completion
+            btnActivate.Enabled = true;
         }
     }
 }
