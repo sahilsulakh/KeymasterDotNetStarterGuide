@@ -1,87 +1,104 @@
+// File: KeyMasterAuthService.cs
+// Purpose: Handles communication with the KeyMaster backend authentication API.
+
 using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
+using System.Text.Json; // Used for JSON serialization/deserialization
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-using App1;
 
-namespace YourWorkspaceName
+namespace YourWorkspaceName // Replace with your actual namespace
 {
-    // This class is responsible for authenticating a license key by calling
-    // your KeyMaster backend API and getting a response about whether the key is valid.
-    public class AuthService
+    public class KeyMasterAuthService
     {
-        private const string ApiBaseUrl = "https://keymaster-agni.vercel.app/api/authenticate-key"; //DON'T CHANGE THIS URL
-       
-        // HttpClient is used to send HTTP requests (like GET, POST) to web servers.
-        // We create one static client to reuse it for better performance.
-        private static readonly HttpClient client = new();
+        // CRITICAL:
+        private const string ApiBaseUrl = "https://keymaster-agni.vercel.app/api/authenticate-key"; //DO NOT TOUCH/CHANGE IT ⚠️⚠️
 
-        // These options tell the JSON serializer to ignore case differences when reading JSON.
-        // For example, it treats "success" and "Success" as the same property.
-        private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+        // Shared static instance of HttpClient (best practice to reuse)
+        private static readonly HttpClient client = new HttpClient();
 
-        // Constructor for AuthService class
-        public AuthService()
+        // Configures JSON options:
+        // - CamelCase for compatibility with JavaScript APIs
+        // - Null fields will be omitted from request payload
+        private static readonly JsonSerializerOptions jsonSerializerOptions = new JsonSerializerOptions
         {
-            // Clear any existing headers for the client
-            client.DefaultRequestHeaders.Accept.Clear();
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
 
-            // We want to tell the server that we accept responses in JSON format
+        // Constructor sets up base request headers for all future HTTP calls
+        public KeyMasterAuthService()
+        {
+            client.DefaultRequestHeaders.Accept.Clear();
             client.DefaultRequestHeaders.Accept.Add(
                 new MediaTypeWithQualityHeaderValue("application/json"));
 
-            // This header 'X-Api-Key' is a secret key that you create to identify your app.
-            // Your backend API checks this key to make sure the request comes from your app.
-            // This is NOT the same as any other keys.
-            // Replace "YOUR-CUSTOM-X-API-KEY" with your actual secret key.
-            client.DefaultRequestHeaders.Add("X-Api-Key", "YOUR-CUSTOM-X-API-KEY");
+            // Optional: Set default timeouts, auth tokens, etc. here
         }
 
-        // This is the main method to call your backend API and authenticate the license key.
-        // It is async because it involves waiting for the server to respond.
-        // Takes an AuthRequest object and returns an AuthResponse object asynchronously.
-        public static async Task<AuthResponse> AuthenticateAsync(AuthRequest request)
+        /// <summary>
+        /// Authenticates a license key against the KeyMaster API.
+        /// </summary>
+        /// <param name="request">Populated AuthRequest with UID, License Key, HWID, etc.</param>
+        /// <returns>AuthResponse containing success flag and message, or null if deserialization fails</returns>
+        public async Task<AuthResponse?> AuthenticateAsync(AuthRequest request)
         {
+            // Validate essential fields before sending request
+            if (string.IsNullOrWhiteSpace(request.MasterUserId))
+            {
+                return new AuthResponse
+                {
+                    Success = false,
+                    Message = "Configuration Error: MasterUserId is missing in the .NET application.",
+                    ErrorCode = "CLIENT_MISSING_MASTER_USER_ID"
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.LicenseKey))
+            {
+                return new AuthResponse
+                {
+                    Success = false,
+                    Message = "License Key cannot be empty.",
+                    ErrorCode = "CLIENT_MISSING_LICENSE_KEY"
+                };
+            }
+
+            // Construct request JSON
             try
             {
-                // Convert the AuthRequest object into JSON string to send to server
-                string jsonRequest = JsonSerializer.Serialize(request);
-
-                // Create HTTP content with the JSON data, specify encoding and content type (application/json)
+                string jsonRequest = JsonSerializer.Serialize(request, jsonSerializerOptions);
                 var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
 
-                // Send a POST request to the API URL with the JSON content
-                HttpResponseMessage response = await client.PostAsync(ApiBaseUrl, content);
+                // Optional Debug Log:
+                // Console.WriteLine("Sending JSON to KeyMaster: " + jsonRequest);
 
-                // Read the response body from the server as a string
+                // Make the HTTP POST request
+                HttpResponseMessage response = await client.PostAsync(ApiBaseUrl, content);
                 string responseBody = await response.Content.ReadAsStringAsync();
 
-                // Check if the HTTP response status is 2xx (Success)
+                // Optional Debug Log:
+                // Console.WriteLine($"KeyMaster API Status: {response.StatusCode}, Body: {responseBody}");
+
                 if (response.IsSuccessStatusCode)
                 {
-                    // If success, try to convert the JSON response into an AuthResponse object
-                    var result = JsonSerializer.Deserialize<AuthResponse>(responseBody, JsonOptions);
-
-                    // Return the result if deserialization succeeded
-                    // Otherwise, return a failure response with a message about deserialization failure
-                    return result ?? new AuthResponse
-                    {
-                        Success = false,
-                        Message = "Failed to deserialize response",
-                        ErrorCode = "DESERIALIZATION_ERROR"
-                    };
+                    // Try to parse the successful response into AuthResponse
+                    return JsonSerializer.Deserialize<AuthResponse>(
+                        responseBody,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
                 }
                 else
                 {
-                    // If response is not success (like 400, 401, 403, 500 etc), try to parse
-                    // the error response JSON into AuthResponse, if the server sent structured error details
+                    // Attempt to deserialize any error message returned from KeyMaster
                     try
                     {
-                        var errorResponse = JsonSerializer.Deserialize<AuthResponse>(responseBody, JsonOptions);
+                        var errorResponse = JsonSerializer.Deserialize<AuthResponse>(
+                            responseBody,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-                        // If parsing succeeds and the error message is available, return that error response
                         if (errorResponse != null && !string.IsNullOrWhiteSpace(errorResponse.Message))
                         {
                             return errorResponse;
@@ -89,43 +106,46 @@ namespace YourWorkspaceName
                     }
                     catch
                     {
-                        // If parsing fails, we ignore the exception and continue to return a generic error below
+                        // Swallow parse error silently; fallback below
                     }
 
-                    // If no structured error, return a generic error message with status code and reason
+                    // Generic error message fallback
                     return new AuthResponse
                     {
                         Success = false,
-                        Message = $"Error: {(int)response.StatusCode} - {response.ReasonPhrase}. Details: {responseBody}",
-                        ErrorCode = response.StatusCode.ToString() // e.g., "NotFound", "Forbidden"
+                        Message = $"Error communicating with KeyMaster: {(int)response.StatusCode} - {response.ReasonPhrase}. Details: {responseBody}",
+                        ErrorCode = $"HTTP_{(int)response.StatusCode}"
                     };
                 }
             }
-            catch (HttpRequestException e) // This catches network errors (e.g., server unreachable)
+            catch (HttpRequestException e)
             {
+                // Network/connection issues
                 return new AuthResponse
                 {
                     Success = false,
-                    Message = "Network error: Could not connect to the server. " + e.Message,
+                    Message = "Network error: Could not connect to KeyMaster. " + e.Message,
                     ErrorCode = "NETWORK_ERROR"
                 };
             }
-            catch (JsonException e) // This catches errors when parsing JSON responses fails
+            catch (JsonException e)
             {
+                // Serialization/deserialization error
                 return new AuthResponse
                 {
                     Success = false,
-                    Message = "Error processing server response: " + e.Message,
+                    Message = "Error processing KeyMaster server response: " + e.Message,
                     ErrorCode = "JSON_PARSE_ERROR"
                 };
             }
-            catch (Exception e) // This catches any other unexpected errors
+            catch (Exception e)
             {
+                // Catch-all for unexpected issues
                 return new AuthResponse
                 {
                     Success = false,
-                    Message = "An unexpected error occurred: " + e.Message,
-                    ErrorCode = "UNEXPECTED_ERROR"
+                    Message = "An unexpected error occurred in KeyMasterAuthService: " + e.Message,
+                    ErrorCode = "UNEXPECTED_CLIENT_ERROR"
                 };
             }
         }
