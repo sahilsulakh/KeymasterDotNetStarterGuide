@@ -11,7 +11,7 @@ namespace YourWorkSpaceName  //Change it to your workspace name
         private KeyMasterAuthService _authService;
 
         // Your KeyMaster account's unique identifier (UID)
-        private string _myKeyMasterAccountUID = "PASTE_YOUR_KEYMASTER_ACCOUNT_UID_HERE"; //CHANGE IT WITH YOUR ACCOOUNT USER ID FROM KEYMASTER PROFILE SECTION
+        private string _myKeyMasterAccountUID = "PASTE_YOUR_KEYMASTER_ACCOUNT_UID_HERE"; //CHANGE IT WITH YOUR ACCOOUNT USER ID FROM KEYMASTER PROFILE SECTION - IMPORTANT!!
 
         public Form1()
         {
